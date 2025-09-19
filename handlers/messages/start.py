@@ -1,4 +1,5 @@
 from aiogram.types import Message
+from aiogram.enums import ParseMode
 from aiogram.fsm.context import FSMContext
 
 from handlers.messages.admin_reply_handlers import admin_notify
@@ -50,5 +51,5 @@ async def welcome(message: Message, state: FSMContext, is_admin: bool, pool, fro
             logger.info(f"Уведомление админам о новой сессии {session_id} отправлено")
         
         logger.debug(f"Отправка приветствия пользователю {tgid}")
-        await message.answer(text)
+        await message.answer(text, parse_mode=ParseMode.MARKDOWN_V2)
         logger.info(f"Приветствие пользователю {tgid} отправлено")
