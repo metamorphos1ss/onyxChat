@@ -1,27 +1,53 @@
 import aiomysql
 from dotenv import load_dotenv
 import os
+from typing import Optional
+from utils.logger import get_logger
+from constants import DB_PORT, DB_MIN_POOL_SIZE, DB_MAX_POOL_SIZE
 
 load_dotenv()
+logger = get_logger(__name__)
 
-TOKEN=os.getenv("TOKEN")
-ADMINS_ID=os.getenv("ADMINS_ID")
+# Загрузка конфигурации с проверкой
+TOKEN: Optional[str] = os.getenv("TOKEN")
+ADMINS_ID: Optional[str] = os.getenv("ADMINS_ID")
 
-DB_HOST=os.getenv("DB_HOST")
-DB_USER=os.getenv("DB_USER")
-DB_PASSWORD=os.getenv("DB_PASSWORD")
-DB_DATABASE=os.getenv("DB_DATABASE")
+DB_HOST: Optional[str] = os.getenv("DB_HOST")
+DB_USER: Optional[str] = os.getenv("DB_USER")
+DB_PASSWORD: Optional[str] = os.getenv("DB_PASSWORD")
+DB_DATABASE: Optional[str] = os.getenv("DB_DATABASE")
+
+# Проверка обязательных переменных
+required_vars = {
+    "TOKEN": TOKEN,
+    "ADMINS_ID": ADMINS_ID,
+    "DB_HOST": DB_HOST,
+    "DB_USER": DB_USER,
+    "DB_PASSWORD": DB_PASSWORD,
+    "DB_DATABASE": DB_DATABASE
+}
+
+missing_vars = [var for var, value in required_vars.items() if not value]
+if missing_vars:
+    logger.error(f"Отсутствуют обязательные переменные окружения: {', '.join(missing_vars)}")
+    raise ValueError(f"Отсутствуют обязательные переменные окружения: {', '.join(missing_vars)}")
 
 
 async def create_pool():
-    pool = await aiomysql.create_pool(
-        host=DB_HOST,
-        user=DB_USER,
-        password =DB_PASSWORD,
-        db=DB_DATABASE,
-        port=3306,
-        minsize=5,
-        maxsize=10,
-        autocommit=True
-    )
-    return pool
+    """Создание пула соединений с базой данных"""
+    try:
+        pool = await aiomysql.create_pool(
+            host=DB_HOST,
+            user=DB_USER,
+            password=DB_PASSWORD,
+            db=DB_DATABASE,
+            port=DB_PORT,
+            minsize=DB_MIN_POOL_SIZE,
+            maxsize=DB_MAX_POOL_SIZE,
+            autocommit=True
+        )
+        logger.info("Пул соединений с базой данных создан успешно")
+        return pool
+    except Exception as e:
+        logger.error(f"Ошибка создания пула соединений с БД: {e}")
+        raise

@@ -1,10 +1,12 @@
-import logging
 from aiogram import BaseMiddleware
 from aiogram.types import Message
 from sql import reqs
 from utils import refresh
-
+from utils.logger import get_logger
+from constants import MESSAGE_DIRECTIONS
 import texts
+
+logger = get_logger(__name__)
 
 class LogMiddleware(BaseMiddleware):
     def __init__(self, pool, storage):
@@ -16,7 +18,7 @@ class LogMiddleware(BaseMiddleware):
             tgid = event.from_user.id
             session_id = await reqs.get_session_id(self.pool, tgid)
             if session_id:
-                logging.info("все гуд")
+                logger.debug(f"Сообщение от пользователя {tgid} в сессии {session_id}")
                 text = event.text or event.caption
                 file_id = None
                 if event.photo:
@@ -30,7 +32,7 @@ class LogMiddleware(BaseMiddleware):
                     self.pool,
                     tgid=tgid,
                     current_session_id=session_id,
-                    direction="fromUser",
+                    direction=MESSAGE_DIRECTIONS["FROM_USER"],
                     text=text,
                     file_id=file_id
                 )
