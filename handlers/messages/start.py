@@ -38,13 +38,12 @@ async def welcome(message: Message, state: FSMContext, is_admin: bool, pool, fro
         logger.info(f"Пользователь {tgid} запустил бота")
         session_opened = await reqs.find_open_session(pool, tgid)
         logger.debug(f"Проверка открытой сессии для {tgid}: {session_opened}")
+        text = texts.WELCOME_TEXT_USER
         
         if session_opened:
             logger.info(f"У клиента {tgid} уже была открыта сессия")
-            text = texts.SESSION_WAS_OPENED
         else:
             logger.info(f"Создание новой сессии для пользователя {tgid}")
-            text = texts.WELCOME_TEXT_USER
             session_id = await reqs.ensure_open_session(pool, tgid)
             logger.info(f"Создана новая сессия {session_id} для пользователя {tgid}")
             await admin_notify(message, pool)
