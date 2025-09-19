@@ -2,16 +2,14 @@ from aiogram.types import Message
 from aiogram.fsm.context import FSMContext
 
 import re
+import logging
 from config import ADMINS_ID
 
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram.types import InlineKeyboardButton
 
-from keyboards import back
-
 from keyboards.messages_keyboard import session_view
 
-import logging
 from sql import reqs
 from utils import render_messages
 
@@ -27,15 +25,16 @@ async def admin_reply(message: Message, state: FSMContext, pool):
     if message.text and message.text.strip() == "/start":
         try:
             await message.delete()
-        finally:
-            return
+        except Exception:
+            pass
+        return
     
     view = await reqs.get_session_view(pool, session_id)
     if not view or not view["tgid"]:
         await message.answer(texts.CLIENT_NOT_FOUND)
         return
     
-    user_id = view['tgid']
+    user_id = view["tgid"]
     sent_text = message.text or message.caption
     file_id = None
 
@@ -64,14 +63,21 @@ async def admin_reply(message: Message, state: FSMContext, pool):
     if panel:
         info = await reqs.get_session_view(pool, int(session_id))
         msgs = await reqs.fetch_session_messages(pool, user_id, int(session_id))
-        text, attachments = render_messages.render_session_text(info["username"], info["assigned_agent"], msgs)
+        text, attachments = render_messages.render_session_text(
+            info["username"], info["assigned_agent"], msgs
+        )
         try:
             await message.bot.edit_message_text(
                 chat_id=panel["chat_id"],
                 message_id=panel["message_id"],
                 text=text,
-                reply_markup=session_view.session_view_kb(session_id, taken=bool(info["assigned_agent"]), opened=bool(await state.get_state()), attachments=attachments),
-                disable_web_page_preview=True
+                reply_markup=session_view.session_view_kb(
+                    session_id,
+                    taken=bool(info["assigned_agent"]),
+                    opened=bool(await state.get_state()),
+                    attachments=attachments,
+                ),
+                disable_web_page_preview=True,
             )
         except Exception:
             pass
@@ -102,6 +108,5 @@ async def admin_notify(message: Message, pool):
     for admin_id in admins:
         try:
             await bot.send_message(admin_id, text, reply_markup=kb.as_markup())
-            pass
         except Exception as e:
             logging.exception("admin_notify: не удалось отправить админу %s: %s", admin_id, e)
