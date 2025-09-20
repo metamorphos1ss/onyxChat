@@ -6,7 +6,7 @@ from aiogram.types import InlineKeyboardButton, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 import texts
-from config import ADMINS_ID
+from config import get_admin_ids
 from constants import MESSAGE_DIRECTIONS
 from keyboards.messages_keyboard import session_view
 from sql import reqs
@@ -158,7 +158,7 @@ async def admin_notify(message: Message, pool):
     logger.debug(f"Создана клавиатура для сессии {session_id}")
 
     # Получаем список админов
-    admins: set[int] = {int(x) for x in re.findall(r"\d+", str(ADMINS_ID))}
+    admins = get_admin_ids()
     logger.info(f"Отправка уведомления {len(admins)} админам: {admins}")
 
     # Отправляем уведомления параллельно

@@ -5,7 +5,7 @@ from aiogram.enums import ParseMode
 from aiogram.filters import Command, CommandStart
 from aiogram.fsm.storage.memory import MemoryStorage
 
-from config import ADMINS_ID, TOKEN, create_pool
+from config import get_admin_ids, TOKEN, create_pool
 from handlers.callbacks import adminPage, messages_handler, users_handler
 from handlers.messages import admin_reply_handlers, start
 from middlewares import admin, databaseAdd, log
@@ -46,8 +46,9 @@ async def bot_init():
 async def _setup_middleware(pool):
     """Настраивает middleware для бота"""
     # Middleware для проверки админов
-    dp.message.middleware(admin.AdminCheck(ADMINS_ID))
-    dp.callback_query.middleware(admin.AdminCheck(ADMINS_ID))
+    admin_ids = get_admin_ids()
+    dp.message.middleware(admin.AdminCheck(admin_ids))
+    dp.callback_query.middleware(admin.AdminCheck(admin_ids))
     logger.info("Middleware для проверки админов добавлен")
     
     # Middleware для логгирования

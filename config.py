@@ -1,5 +1,6 @@
 import os
-from typing import Optional
+import re
+from typing import Optional, Set
 
 import aiomysql
 from dotenv import load_dotenv
@@ -12,7 +13,7 @@ logger = get_logger(__name__)
 
 # Загрузка конфигурации с проверкой
 TOKEN: Optional[str] = os.getenv("TOKEN")
-ADMINS_ID: Optional[str] = os.getenv("ADMINS_ID")
+ADMINS_ID: str = os.getenv("ADMINS_ID", "")
 
 DB_HOST: Optional[str] = os.getenv("DB_HOST")
 DB_USER: Optional[str] = os.getenv("DB_USER")
@@ -22,7 +23,7 @@ DB_DATABASE: Optional[str] = os.getenv("DB_DATABASE")
 # Проверка обязательных переменных
 required_vars = {
     "TOKEN": TOKEN,
-    "ADMINS_ID": ADMINS_ID,
+    "ADMINS_ID": ADMINS_ID if ADMINS_ID else None,
     "DB_HOST": DB_HOST,
     "DB_USER": DB_USER,
     "DB_PASSWORD": DB_PASSWORD,
@@ -33,6 +34,11 @@ missing_vars = [var for var, value in required_vars.items() if not value]
 if missing_vars:
     logger.error(f"Отсутствуют обязательные переменные окружения: {', '.join(missing_vars)}")
     raise ValueError(f"Отсутствуют обязательные переменные окружения: {', '.join(missing_vars)}")
+
+
+def get_admin_ids() -> Set[int]:
+    """Возвращает множество ID админов, извлеченных из строки ADMINS_ID"""
+    return {int(x) for x in re.findall(r"\d+", ADMINS_ID)}
 
 
 async def create_pool():

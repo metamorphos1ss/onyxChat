@@ -21,7 +21,7 @@ class AdminCheck(BaseMiddleware):
             ):
         from_user = getattr(event, "from_user", None)
         user_id = from_user.id if from_user else None
-        is_admin = bool(from_user and str(from_user.id) in self.admins)
+        is_admin = bool(from_user and from_user.id in self.admins)
         data["is_admin"] = is_admin
         
         if user_id:
