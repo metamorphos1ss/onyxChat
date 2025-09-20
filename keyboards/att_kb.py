@@ -1,5 +1,6 @@
-from aiogram.utils.keyboard import InlineKeyboardBuilder
 import texts
+
+from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 def attclose(mid) -> InlineKeyboardBuilder:
     builder = InlineKeyboardBuilder()

@@ -1,9 +1,11 @@
-import aiomysql
-from dotenv import load_dotenv
 import os
 from typing import Optional
+
+import aiomysql
+from dotenv import load_dotenv
+
+from constants import DB_MAX_POOL_SIZE, DB_MIN_POOL_SIZE, DB_PORT
 from utils.logger import get_logger
-from constants import DB_PORT, DB_MIN_POOL_SIZE, DB_MAX_POOL_SIZE
 
 load_dotenv()
 logger = get_logger(__name__)

@@ -1,10 +1,12 @@
+import texts
+
 from aiogram import BaseMiddleware
 from aiogram.types import Message
+
+from constants import MESSAGE_DIRECTIONS
 from sql import reqs
 from utils import refresh
 from utils.logger import get_logger
-from constants import MESSAGE_DIRECTIONS
-import texts
 
 logger = get_logger(__name__)
 

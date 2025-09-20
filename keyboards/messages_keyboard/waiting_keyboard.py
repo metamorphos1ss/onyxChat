@@ -1,6 +1,7 @@
+import texts
+
 from aiogram.types import InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-import texts
 
 def kb(users: list[tuple[int, str | None]]):
     builder = InlineKeyboardBuilder()

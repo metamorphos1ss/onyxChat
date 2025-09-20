@@ -2,6 +2,7 @@ from typing import Any, Awaitable, Callable, Dict
 
 from aiogram import BaseMiddleware
 from aiogram.types import Message
+
 from utils.logger import get_logger
 
 logger = get_logger(__name__)

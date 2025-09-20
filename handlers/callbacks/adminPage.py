@@ -1,5 +1,6 @@
-from aiogram.types import CallbackQuery
 from aiogram.fsm.context import FSMContext
+from aiogram.types import CallbackQuery
+
 from handlers.messages import start
 from keyboards import back, messages_page_keyboard
 from utils.logger import get_logger

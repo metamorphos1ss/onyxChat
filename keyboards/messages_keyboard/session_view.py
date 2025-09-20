@@ -1,7 +1,7 @@
+import texts
+
 from aiogram.types import InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-
-import texts
 
 def session_view_kb(session_id: int, taken: bool, opened: bool | None, attachments: list[tuple[int, int]] | None = None):
     builder = InlineKeyboardBuilder()

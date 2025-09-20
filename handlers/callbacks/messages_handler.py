@@ -1,11 +1,14 @@
+import asyncio
+import math
+
 from aiogram.types import CallbackQuery
+
+import texts
+from constants import CLOSED_PER_PAGE, SESSION_TYPES
+from keyboards import back
+from keyboards.messages_keyboard import closed_kb, waiting_keyboard
 from sql import reqs
 from utils.logger import get_logger
-from constants import SESSION_TYPES, CLOSED_PER_PAGE
-import texts
-from keyboards import back
-from keyboards.messages_keyboard import waiting_keyboard, closed_kb
-import math
 
 logger = get_logger(__name__)
 
@@ -14,7 +17,7 @@ def _format_count_text(count: int, mine_texts: tuple[str, str, str], other_texts
     """Форматирование текста с количеством в зависимости от числа"""
     if count == 1:
         return mine_texts[0].format(count=count)
-    elif count in [2, 3, 4]:
+    elif count in (2, 3, 4):
         return mine_texts[1].format(count=count)
     else:
         return mine_texts[2].format(count=count)
@@ -69,6 +72,7 @@ async def _render_done_page(callback_query, pool, page: int, only_mine: bool, ag
     logger.info(f"Страница закрытых чатов отрендерена для агента {agent_id}")
 
 async def messages(callback_query: CallbackQuery, is_admin: bool, pool):
+    """Обрабатывает запросы на получение списков сессий"""
     agent_id = callback_query.from_user.id
     logger.info(f"Обработка запроса сообщений от агента {agent_id}")
     
@@ -79,61 +83,100 @@ async def messages(callback_query: CallbackQuery, is_admin: bool, pool):
     callback_data = callback_query.data.removeprefix("msg:")
     logger.debug(f"Тип запроса: {callback_data}")
 
-    if callback_data == "toServe":
-        logger.info(f"Запрос ожидающих сессий от агента {agent_id}")
-        items = await reqs.fetch_sessions(pool, SESSION_TYPES["TO_SERVE"])
-        count = await reqs.count_sessions(pool, SESSION_TYPES["TO_SERVE"])
-        logger.debug(f"Найдено {count} ожидающих сессий")
-        
-        if not items:
-            logger.info(f"Нет ожидающих сессий для агента {agent_id}")
-            await callback_query.message.edit_text(texts.NONE_TO_SERVE, reply_markup=back.keyboard())
-            return
-
-        await callback_query.message.edit_text(texts.COUNT_TO_SERVE.format(count=count), reply_markup=waiting_keyboard.kb(items))
-        await callback_query.answer()
-        logger.info(f"Список ожидающих сессий показан агенту {agent_id}")
-
-    elif callback_data == "processing_mine":
-        logger.info(f"Запрос моих активных сессий от агента {agent_id}")
-        items = await reqs.fetch_sessions(pool, SESSION_TYPES["PROCESSING_MINE"], agent_id=agent_id)
-        count = await reqs.count_sessions(pool, SESSION_TYPES["PROCESSING_MINE"], agent_id=agent_id)
-        logger.debug(f"Найдено {count} моих активных сессий")
-        
-        if not items:
-            logger.info(f"Нет активных сессий у агента {agent_id}")
-            await callback_query.message.edit_text(texts.NO_ONE_ASSIGNED_TO_ADMIN, reply_markup=back.keyboard())
-            return
-        text = _format_count_text(
-            count, 
-            (texts.MINE_ASSIGNED_1, texts.MINE_ASSIGNED_2_3_4, texts.MINE_ASSIGNED_OTHER),
-            (texts.OTHER_ASSIGNED_1, texts.OTHER_ASSIGNED_2_3_4, texts.OTHER_ASSIGNED_OTHER)
-        )
-        await callback_query.message.edit_text(text=text, reply_markup=waiting_keyboard.kb(items))
-        await callback_query.answer()
-        logger.info(f"Список моих активных сессий показан агенту {agent_id}")
-
-    elif callback_data == "processing":
-        logger.info(f"Запрос активных сессий других агентов от агента {agent_id}")
-        items = await reqs.fetch_sessions(pool, SESSION_TYPES["PROCESSING"], agent_id=agent_id)
-        count = await reqs.count_sessions(pool, SESSION_TYPES["PROCESSING"], agent_id=agent_id)
-        logger.debug(f"Найдено {count} активных сессий других агентов")
-        
-        if not items:
-            logger.info(f"Нет активных сессий других агентов для агента {agent_id}")
-            await callback_query.message.edit_text(texts.NO_ONE_ASSGINED, reply_markup=back.keyboard())
-            return
-        text = _format_count_text(
-            count,
-            (texts.OTHER_ASSIGNED_1, texts.OTHER_ASSIGNED_2_3_4, texts.OTHER_ASSIGNED_OTHER),
-            (texts.OTHER_ASSIGNED_1, texts.OTHER_ASSIGNED_2_3_4, texts.OTHER_ASSIGNED_OTHER)
-        )
-        await callback_query.message.edit_text(text=text, reply_markup=waiting_keyboard.kb(items))
-        await callback_query.answer()
-        logger.info(f"Список активных сессий других агентов показан агенту {agent_id}")
+    # Обработка разных типов запросов
+    handlers = {
+        "toServe": _handle_to_serve,
+        "processing_mine": _handle_processing_mine,
+        "processing": _handle_processing,
+        "done": _handle_done
+    }
     
-    elif callback_data == "done":
-        logger.info(f"Запрос закрытых чатов от агента {agent_id}")
-        await _render_done_page(callback_query, pool, page=1, only_mine=False, agent_id=agent_id)
-        await callback_query.answer()
-        logger.info(f"Список закрытых чатов показан агенту {agent_id}")
+    handler = handlers.get(callback_data)
+    if handler:
+        await handler(callback_query, pool, agent_id)
+    else:
+        logger.warning(f"Неизвестный тип запроса: {callback_data}")
+
+
+async def _handle_to_serve(callback_query: CallbackQuery, pool, agent_id: int):
+    """Обрабатывает запрос ожидающих сессий"""
+    logger.info(f"Запрос ожидающих сессий от агента {agent_id}")
+    
+    # Выполняем запросы параллельно для лучшей производительности
+    items, count = await asyncio.gather(
+        reqs.fetch_sessions(pool, SESSION_TYPES["TO_SERVE"]),
+        reqs.count_sessions(pool, SESSION_TYPES["TO_SERVE"])
+    )
+    logger.debug(f"Найдено {count} ожидающих сессий")
+    
+    if not items:
+        logger.info(f"Нет ожидающих сессий для агента {agent_id}")
+        await callback_query.message.edit_text(texts.NONE_TO_SERVE, reply_markup=back.keyboard())
+        return
+
+    await callback_query.message.edit_text(
+        texts.COUNT_TO_SERVE.format(count=count), 
+        reply_markup=waiting_keyboard.kb(items)
+    )
+    await callback_query.answer()
+    logger.info(f"Список ожидающих сессий показан агенту {agent_id}")
+
+
+async def _handle_processing_mine(callback_query: CallbackQuery, pool, agent_id: int):
+    """Обрабатывает запрос моих активных сессий"""
+    logger.info(f"Запрос моих активных сессий от агента {agent_id}")
+    
+    # Выполняем запросы параллельно
+    items, count = await asyncio.gather(
+        reqs.fetch_sessions(pool, SESSION_TYPES["PROCESSING_MINE"], agent_id=agent_id),
+        reqs.count_sessions(pool, SESSION_TYPES["PROCESSING_MINE"], agent_id=agent_id)
+    )
+    logger.debug(f"Найдено {count} моих активных сессий")
+    
+    if not items:
+        logger.info(f"Нет активных сессий у агента {agent_id}")
+        await callback_query.message.edit_text(texts.NO_ONE_ASSIGNED_TO_ADMIN, reply_markup=back.keyboard())
+        return
+    
+    text = _format_count_text(
+        count, 
+        (texts.MINE_ASSIGNED_1, texts.MINE_ASSIGNED_2_3_4, texts.MINE_ASSIGNED_OTHER),
+        (texts.OTHER_ASSIGNED_1, texts.OTHER_ASSIGNED_2_3_4, texts.OTHER_ASSIGNED_OTHER)
+    )
+    await callback_query.message.edit_text(text=text, reply_markup=waiting_keyboard.kb(items))
+    await callback_query.answer()
+    logger.info(f"Список моих активных сессий показан агенту {agent_id}")
+
+
+async def _handle_processing(callback_query: CallbackQuery, pool, agent_id: int):
+    """Обрабатывает запрос активных сессий других агентов"""
+    logger.info(f"Запрос активных сессий других агентов от агента {agent_id}")
+    
+    # Выполняем запросы параллельно
+    items, count = await asyncio.gather(
+        reqs.fetch_sessions(pool, SESSION_TYPES["PROCESSING"], agent_id=agent_id),
+        reqs.count_sessions(pool, SESSION_TYPES["PROCESSING"], agent_id=agent_id)
+    )
+    logger.debug(f"Найдено {count} активных сессий других агентов")
+    
+    if not items:
+        logger.info(f"Нет активных сессий других агентов для агента {agent_id}")
+        await callback_query.message.edit_text(texts.NO_ONE_ASSGINED, reply_markup=back.keyboard())
+        return
+    
+    text = _format_count_text(
+        count,
+        (texts.OTHER_ASSIGNED_1, texts.OTHER_ASSIGNED_2_3_4, texts.OTHER_ASSIGNED_OTHER),
+        (texts.OTHER_ASSIGNED_1, texts.OTHER_ASSIGNED_2_3_4, texts.OTHER_ASSIGNED_OTHER)
+    )
+    await callback_query.message.edit_text(text=text, reply_markup=waiting_keyboard.kb(items))
+    await callback_query.answer()
+    logger.info(f"Список активных сессий других агентов показан агенту {agent_id}")
+
+
+async def _handle_done(callback_query: CallbackQuery, pool, agent_id: int):
+    """Обрабатывает запрос закрытых чатов"""
+    logger.info(f"Запрос закрытых чатов от агента {agent_id}")
+    await _render_done_page(callback_query, pool, page=1, only_mine=False, agent_id=agent_id)
+    await callback_query.answer()
+    logger.info(f"Список закрытых чатов показан агенту {agent_id}")
