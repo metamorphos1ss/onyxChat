@@ -40,7 +40,7 @@ class Logger:
         
         # Создаем консольный обработчик
         console_handler = logging.StreamHandler(sys.stdout)
-        console_handler.setLevel(logging.INFO)
+        console_handler.setLevel(logging.WARN)
         console_handler.setFormatter(formatter)
         console_handler.stream.reconfigure(encoding='utf-8')
         
