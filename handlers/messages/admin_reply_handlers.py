@@ -60,7 +60,7 @@ async def admin_reply(message: Message, state: FSMContext, pool):
         logger.error(f"Ошибка отправки сообщения пользователю {user_id}: {e}")
         return await message.answer(texts.FAILED_TO_SEND_MESSAGE.format(exception=e))
     
-    # Логируем сообщение в БД
+  # Логируем сообщение в БД
     logger.info(f"Логирование сообщения в БД: user_id={user_id}, session_id={session_id}")
     await reqs.log_message(
         pool,
