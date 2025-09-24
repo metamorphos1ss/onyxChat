@@ -7,7 +7,7 @@ import texts
 from constants import CLOSED_PER_PAGE, SESSION_TYPES
 from keyboards import back
 from keyboards.messages_keyboard import closed_kb, waiting_keyboard
-from sql import reqs
+from services import ServiceContainer
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -23,7 +23,7 @@ def _format_count_text(count: int, mine_texts: tuple[str, str, str], other_texts
         return mine_texts[2].format(count=count)
 
 
-async def done_list_page(callback_query: CallbackQuery, pool):
+async def done_list_page(callback_query: CallbackQuery, services: ServiceContainer):
     agent_id = callback_query.from_user.id
     logger.info(f"Обработка пагинации закрытых чатов для агента {agent_id}")
     
@@ -32,11 +32,11 @@ async def done_list_page(callback_query: CallbackQuery, pool):
     only_mine = bool(int(mine_str))
     logger.debug(f"Параметры пагинации: page={page}, only_mine={only_mine}")
     
-    await _render_done_page(callback_query, pool, page=page, only_mine=only_mine, agent_id=agent_id)
+    await _render_done_page(callback_query, services, page=page, only_mine=only_mine, agent_id=agent_id)
     await callback_query.answer()
     logger.info(f"Пагинация закрытых чатов обработана для агента {agent_id}")
 
-async def done_toggle(callback_query: CallbackQuery, pool):
+async def done_toggle(callback_query: CallbackQuery, services: ServiceContainer):
     agent_id = callback_query.from_user.id
     logger.info(f"Переключение режима просмотра закрытых чатов для агента {agent_id}")
     
@@ -45,21 +45,22 @@ async def done_toggle(callback_query: CallbackQuery, pool):
     only_mine = not bool(int(mine_str))
     logger.debug(f"Переключение режима: page={page}, only_mine={only_mine}")
     
-    await _render_done_page(callback_query, pool, page=page, only_mine=only_mine, agent_id=agent_id)
+    await _render_done_page(callback_query, services, page=page, only_mine=only_mine, agent_id=agent_id)
     await callback_query.answer()
     logger.info(f"Режим просмотра переключен для агента {agent_id}")
 
 
 
-async def _render_done_page(callback_query, pool, page: int, only_mine: bool, agent_id: int):
+async def _render_done_page(callback_query: CallbackQuery, services: ServiceContainer, page: int, only_mine: bool, agent_id: int) -> None:
     logger.debug(f"Рендеринг страницы закрытых чатов: page={page}, only_mine={only_mine}, agent_id={agent_id}")
     
-    total = await reqs.count_closed(pool, only_mine=only_mine, agent_id=agent_id)
+    session_service = services.session_service
+    total = await session_service.count_closed_sessions(only_mine=only_mine, agent_id=agent_id)
     total_pages = max(1, math.ceil(total / CLOSED_PER_PAGE))
     page = max(1, min(page, total_pages))
     logger.debug(f"Статистика: total={total}, total_pages={total_pages}, corrected_page={page}")
 
-    rows = await reqs.fetch_closed(pool, page=page, only_mine=only_mine, agent_id=agent_id)
+    rows = await session_service.fetch_closed_sessions(page=page, only_mine=only_mine, agent_id=agent_id)
     logger.debug(f"Получено {len(rows)} закрытых чатов")
     
     title = "Закрытые чаты - Мои" if only_mine else "Закрытые чаты - Все"
@@ -71,7 +72,7 @@ async def _render_done_page(callback_query, pool, page: int, only_mine: bool, ag
     await callback_query.message.edit_text(title, reply_markup=kb)
     logger.info(f"Страница закрытых чатов отрендерена для агента {agent_id}")
 
-async def messages(callback_query: CallbackQuery, is_admin: bool, pool):
+async def messages(callback_query: CallbackQuery, is_admin: bool, services: ServiceContainer):
     """Обрабатывает запросы на получение списков сессий"""
     agent_id = callback_query.from_user.id
     logger.info(f"Обработка запроса сообщений от агента {agent_id}")
@@ -93,19 +94,20 @@ async def messages(callback_query: CallbackQuery, is_admin: bool, pool):
     
     handler = handlers.get(callback_data)
     if handler:
-        await handler(callback_query, pool, agent_id)
+        await handler(callback_query, services, agent_id)
     else:
         logger.warning(f"Неизвестный тип запроса: {callback_data}")
 
 
-async def _handle_to_serve(callback_query: CallbackQuery, pool, agent_id: int):
+async def _handle_to_serve(callback_query: CallbackQuery, services: ServiceContainer, agent_id: int) -> None:
     """Обрабатывает запрос ожидающих сессий"""
     logger.info(f"Запрос ожидающих сессий от агента {agent_id}")
     
+    session_service = services.session_service
     # Выполняем запросы параллельно для лучшей производительности
     items, count = await asyncio.gather(
-        reqs.fetch_sessions(pool, SESSION_TYPES["TO_SERVE"]),
-        reqs.count_sessions(pool, SESSION_TYPES["TO_SERVE"])
+        session_service.fetch_sessions(SESSION_TYPES["TO_SERVE"]),
+        session_service.count_sessions(SESSION_TYPES["TO_SERVE"])
     )
     logger.debug(f"Найдено {count} ожидающих сессий")
     
@@ -122,14 +124,15 @@ async def _handle_to_serve(callback_query: CallbackQuery, pool, agent_id: int):
     logger.info(f"Список ожидающих сессий показан агенту {agent_id}")
 
 
-async def _handle_processing_mine(callback_query: CallbackQuery, pool, agent_id: int):
+async def _handle_processing_mine(callback_query: CallbackQuery, services: ServiceContainer, agent_id: int) -> None:
     """Обрабатывает запрос моих активных сессий"""
     logger.info(f"Запрос моих активных сессий от агента {agent_id}")
     
+    session_service = services.session_service
     # Выполняем запросы параллельно
     items, count = await asyncio.gather(
-        reqs.fetch_sessions(pool, SESSION_TYPES["PROCESSING_MINE"], agent_id=agent_id),
-        reqs.count_sessions(pool, SESSION_TYPES["PROCESSING_MINE"], agent_id=agent_id)
+        session_service.fetch_sessions(SESSION_TYPES["PROCESSING_MINE"], agent_id=agent_id),
+        session_service.count_sessions(SESSION_TYPES["PROCESSING_MINE"], agent_id=agent_id)
     )
     logger.debug(f"Найдено {count} моих активных сессий")
     
@@ -148,14 +151,15 @@ async def _handle_processing_mine(callback_query: CallbackQuery, pool, agent_id:
     logger.info(f"Список моих активных сессий показан агенту {agent_id}")
 
 
-async def _handle_processing(callback_query: CallbackQuery, pool, agent_id: int):
+async def _handle_processing(callback_query: CallbackQuery, services: ServiceContainer, agent_id: int) -> None:
     """Обрабатывает запрос активных сессий других агентов"""
     logger.info(f"Запрос активных сессий других агентов от агента {agent_id}")
     
+    session_service = services.session_service
     # Выполняем запросы параллельно
     items, count = await asyncio.gather(
-        reqs.fetch_sessions(pool, SESSION_TYPES["PROCESSING"], agent_id=agent_id),
-        reqs.count_sessions(pool, SESSION_TYPES["PROCESSING"], agent_id=agent_id)
+        session_service.fetch_sessions(SESSION_TYPES["PROCESSING"], agent_id=agent_id),
+        session_service.count_sessions(SESSION_TYPES["PROCESSING"], agent_id=agent_id)
     )
     logger.debug(f"Найдено {count} активных сессий других агентов")
     
@@ -174,9 +178,9 @@ async def _handle_processing(callback_query: CallbackQuery, pool, agent_id: int)
     logger.info(f"Список активных сессий других агентов показан агенту {agent_id}")
 
 
-async def _handle_done(callback_query: CallbackQuery, pool, agent_id: int):
+async def _handle_done(callback_query: CallbackQuery, services: ServiceContainer, agent_id: int) -> None:
     """Обрабатывает запрос закрытых чатов"""
     logger.info(f"Запрос закрытых чатов от агента {agent_id}")
-    await _render_done_page(callback_query, pool, page=1, only_mine=False, agent_id=agent_id)
+    await _render_done_page(callback_query, services, page=1, only_mine=False, agent_id=agent_id)
     await callback_query.answer()
     logger.info(f"Список закрытых чатов показан агенту {agent_id}")

@@ -5,7 +5,7 @@ import texts
 from handlers.messages import start
 from keyboards import att_kb, back
 from keyboards.messages_keyboard import session_view
-from sql import reqs
+from services import ServiceContainer
 from states import AdminChat
 from utils import render_messages
 from utils.logger import get_logger
@@ -15,7 +15,7 @@ logger = get_logger(__name__)
 
 
 
-async def open_session_view(callback_query: CallbackQuery, is_admin: bool, pool, state: FSMContext):
+async def open_session_view(callback_query: CallbackQuery, is_admin: bool, services: ServiceContainer, state: FSMContext):
     """Открывает просмотр сессии"""
     agent_id = callback_query.from_user.id
     logger.info(f"Открытие просмотра сессии агентом {agent_id}")
@@ -27,13 +27,16 @@ async def open_session_view(callback_query: CallbackQuery, is_admin: bool, pool,
     session_id = callback_query.data.removeprefix("session:")
     logger.debug(f"ID сессии для просмотра: {session_id}")
     
-    info = await reqs.get_session_view(pool, session_id)
+    session_service = services.session_service
+    message_service = services.message_service
+    
+    info = await session_service.get_session_info(session_id)
     if not info:
         logger.error(f"Сессия {session_id} не найдена для агента {agent_id}")
         return await callback_query.message.edit_text(texts.SESSION_NOT_FOUND, reply_markup=back.keyboard())
 
     # Получаем сообщения и рендерим текст
-    msgs = await reqs.fetch_session_messages(pool, info["tgid"], session_id)
+    msgs = await message_service.get_session_messages(info["tgid"], session_id)
     text, attachments = render_messages.render_session_text(info["username"], info["assigned_agent"], msgs)
     logger.debug(f"Рендеринг сессии: {len(msgs)} сообщений, {len(attachments)} вложений")
 
@@ -58,7 +61,7 @@ async def open_session_view(callback_query: CallbackQuery, is_admin: bool, pool,
     await callback_query.answer()
     logger.info(f"Просмотр сессии {session_id} открыт агентом {agent_id}")
 
-async def take_session(callback_query: CallbackQuery, is_admin: bool, pool, state: FSMContext):
+async def take_session(callback_query: CallbackQuery, is_admin: bool, services: ServiceContainer, state: FSMContext) -> None:
     agent_id = callback_query.from_user.id
     logger.info(f"Попытка взять сессию агентом {agent_id}")
     
@@ -69,7 +72,10 @@ async def take_session(callback_query: CallbackQuery, is_admin: bool, pool, stat
     session_id = callback_query.data.removeprefix("take:")
     logger.debug(f"ID сессии для взятия: {session_id}")
 
-    ok = await reqs.assign_session(pool, session_id, agent_id)
+    session_service = services.session_service
+    message_service = services.message_service
+    
+    ok = await session_service.assign_session(session_id, agent_id)
     if not ok:
         logger.warning(f"Попытка взять уже занятую сессию {session_id} оператором {agent_id}")
         return await callback_query.answer(texts.TAKEN_SESSION, show_alert=True)
@@ -80,14 +86,14 @@ async def take_session(callback_query: CallbackQuery, is_admin: bool, pool, stat
     await state.set_state(AdminChat.active)
     await state.update_data(session_id=session_id)
 
-    info = await reqs.get_session_view(pool, session_id)
+    info = await session_service.get_session_info(session_id)
     if not info:
         logger.error(f"Сессия {session_id} не найдена после взятия агентом {agent_id}")
         await state.clear()
         return await callback_query.answer(texts.SESSION_NOT_FOUND, show_alert=True)
     
     logger.info(f"Получение сообщений сессии {session_id} для пользователя {info['tgid']}")
-    msgs = await reqs.fetch_session_messages(pool, info["tgid"], session_id)
+    msgs = await message_service.get_session_messages(info["tgid"], session_id)
     text, attachments = render_messages.render_session_text(info["username"], info["assigned_agent"], msgs)
     logger.debug(f"Рендеринг сессии: {len(msgs)} сообщений, {len(attachments)} вложений")
 
@@ -111,7 +117,7 @@ async def take_session(callback_query: CallbackQuery, is_admin: bool, pool, stat
     await callback_query.answer(texts.CHAT_ASSIGNED_TO_YOU)
     logger.info(f"Сессия {session_id} успешно взята агентом {agent_id}")
 
-async def open_chat(callback_query: CallbackQuery, is_admin: bool, pool, state: FSMContext):
+async def open_chat(callback_query: CallbackQuery, is_admin: bool, services: ServiceContainer, state: FSMContext) -> None:
     """Открывает чат для работы"""
     agent_id = callback_query.from_user.id
     logger.info(f"Открытие чата агентом {agent_id}")
@@ -127,15 +133,18 @@ async def open_chat(callback_query: CallbackQuery, is_admin: bool, pool, state: 
     await state.set_state(AdminChat.active)
     await state.update_data(session_id=session_id)
 
+    session_service = services.session_service
+    message_service = services.message_service
+    
     # Получаем информацию о сессии
-    info = await reqs.get_session_view(pool, session_id)
+    info = await session_service.get_session_info(session_id)
     if not info:
         logger.error(f"Сессия {session_id} не найдена для открытия чата агентом {agent_id}")
         await state.clear()
         return await callback_query.answer(texts.SESSION_NOT_FOUND, show_alert=True)
     
     # Получаем сообщения и рендерим
-    msgs = await reqs.fetch_session_messages(pool, info["tgid"], session_id)
+    msgs = await message_service.get_session_messages(info["tgid"], session_id)
     text, attachments = render_messages.render_session_text(info["username"], info["assigned_agent"], msgs)
     logger.debug(f"Рендеринг сессии: {len(msgs)} сообщений, {len(attachments)} вложений")
 
@@ -160,7 +169,7 @@ async def open_chat(callback_query: CallbackQuery, is_admin: bool, pool, state: 
     await callback_query.answer()
     logger.info(f"Чат сессии {session_id} открыт агентом {agent_id}")
     
-async def close_session(callback_query: CallbackQuery, is_admin: bool, pool, state: FSMContext):
+async def close_session(callback_query: CallbackQuery, is_admin: bool, services: ServiceContainer, state: FSMContext) -> None:
     """Закрывает сессию"""
     agent_id = callback_query.from_user.id
     logger.info(f"Попытка закрыть сессию агентом {agent_id}")
@@ -172,8 +181,10 @@ async def close_session(callback_query: CallbackQuery, is_admin: bool, pool, sta
     session_id = callback_query.data.removeprefix("close:")
     logger.debug(f"ID сессии для закрытия: {session_id}")
     
+    session_service = services.session_service
+    
     # Закрываем сессию
-    ok = await reqs.close_session(pool, session_id=session_id, assigned_agent=agent_id)
+    ok = await session_service.close_session(session_id, agent_id)
     if not ok:
         logger.warning(f"Не удалось закрыть сессию {session_id} оператором {agent_id}")
         return await callback_query.answer(texts.FAILED_TO_CLOSE_SESSION, show_alert=True)
@@ -182,11 +193,11 @@ async def close_session(callback_query: CallbackQuery, is_admin: bool, pool, sta
     
     # Очищаем состояние и возвращаемся на главную
     await state.clear()
-    await start.welcome(callback_query.message, state, is_admin, pool, from_callback=True)
+    await start.welcome(callback_query.message, state, is_admin, services, from_callback=True)
     await callback_query.answer(texts.SESSION_CLOSED_SUCCESSFUL)
     logger.info(f"Сессия {session_id} успешно закрыта агентом {agent_id}")
 
-async def open_attachment(callback_query: CallbackQuery, pool):
+async def open_attachment(callback_query: CallbackQuery, services: ServiceContainer) -> None:
     """Открывает вложение из сообщения"""
     user_id = callback_query.from_user.id
     logger.info(f"Открытие вложения пользователем {user_id}")
@@ -195,8 +206,10 @@ async def open_attachment(callback_query: CallbackQuery, pool):
     mid = int(mid_str)
     logger.debug(f"Параметры вложения: session_id={sid_str}, message_id={mid}")
 
+    message_service = services.message_service
+    
     # Получаем информацию о файле
-    file_id, sess_id_of_msg = await reqs.get_message_file(pool, mid)
+    file_id, sess_id_of_msg = await message_service.get_message_file(mid)
     if not file_id or int(sid_str) != int(sess_id_of_msg or 0):
         logger.warning(f"Вложение {mid} не найдено или не принадлежит сессии {sid_str}")
         return await callback_query.answer(texts.ATTACHMENT_NOT_FOUND, show_alert=True)
@@ -225,7 +238,7 @@ async def _send_attachment(callback_query: CallbackQuery, file_id: str, mid: int
     except Exception as e2:
         logger.error(f"Не удалось отправить вложение {mid}: {e2}")
 
-async def close_attachment(callback_query: CallbackQuery, is_admin: bool):
+async def close_attachment(callback_query: CallbackQuery, is_admin: bool) -> None:
     """Закрывает вложение"""
     agent_id = callback_query.from_user.id
     logger.info(f"Закрытие вложения агентом {agent_id}")

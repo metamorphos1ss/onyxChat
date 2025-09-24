@@ -8,8 +8,8 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from config import get_admin_ids, TOKEN, create_pool
 from handlers.callbacks import adminPage, messages_handler, users_handler
 from handlers.messages import admin_reply_handlers, start
-from middlewares import admin, databaseAdd, log
-from sql import reqs
+from middlewares import admin, databaseAdd, log, services
+from services import ServiceContainer
 from states import AdminChat
 from utils.logger import get_logger
 
@@ -30,8 +30,13 @@ async def bot_init():
     dp["pool"] = pool
     logger.info("Пул БД добавлен в диспетчер")
     
+    # Создаем контейнер сервисов
+    services = ServiceContainer(pool, bot)
+    dp["services"] = services
+    logger.info("Контейнер сервисов добавлен в диспетчер")
+    
     # Настраиваем middleware
-    await _setup_middleware(pool)
+    await _setup_middleware(pool, services)
     
     # Регистрируем обработчики
     await _register_handlers()
@@ -43,8 +48,13 @@ async def bot_init():
     return pool
 
 
-async def _setup_middleware(pool):
+async def _setup_middleware(pool, services_container):
     """Настраивает middleware для бота"""
+    # Middleware для передачи сервисов
+    dp.message.middleware(services.ServicesMiddleware())
+    dp.callback_query.middleware(services.ServicesMiddleware())
+    logger.info("Middleware для передачи сервисов добавлен")
+    
     # Middleware для проверки админов
     admin_ids = get_admin_ids()
     dp.message.middleware(admin.AdminCheck(admin_ids))
@@ -52,11 +62,11 @@ async def _setup_middleware(pool):
     logger.info("Middleware для проверки админов добавлен")
     
     # Middleware для логгирования
-    dp.message.middleware(log.LogMiddleware(pool, dp.storage))
+    dp.message.middleware(log.LogMiddleware(services_container, dp.storage))
     logger.info("Middleware для логгирования добавлен")
     
     # Middleware для добавления пользователей в БД
-    dp.message.middleware(databaseAdd.DbAdd(pool))
+    dp.message.middleware(databaseAdd.DbAdd(services_container))
     logger.info("Middleware для добавления пользователей в БД добавлен")
 
 
@@ -99,9 +109,12 @@ async def main() -> None:
     pool = await bot_init()
     logger.info("Инициализация бота завершена")
     
+    # Получаем контейнер сервисов из диспетчера
+    services_container = dp["services"]
+    
     # Создаем таблицы в БД
     logger.info("Создание таблиц в БД...")
-    await reqs.createTables(pool)
+    await services_container.database_service.create_tables()
     logger.info("Таблицы в БД созданы/проверены")
 
     # Запускаем бота

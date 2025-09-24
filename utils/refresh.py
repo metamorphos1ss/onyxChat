@@ -3,14 +3,14 @@ from aiogram.fsm.storage.base import StorageKey
 
 from keyboards import back
 from keyboards.messages_keyboard import session_view
-from sql import reqs
+from services import ServiceContainer
 from states import AdminChat
 from utils import render_messages
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
 
-async def refresh_session_view(bot, storage, pool, operator_id: int, state: FSMContext | None = None):
+async def refresh_session_view(bot, storage, services: ServiceContainer, operator_id: int, state: FSMContext | None = None):
     """Обновляет просмотр сессии для оператора"""
     logger.debug(f"Обновление просмотра сессии для оператора {operator_id}")
     
@@ -33,7 +33,7 @@ async def refresh_session_view(bot, storage, pool, operator_id: int, state: FSMC
         return
 
     # Обновляем панель
-    await _update_panel(bot, pool, session_id, panel, current_state, operator_id)
+    await _update_panel(bot, services, session_id, panel, current_state, operator_id)
 
 
 def _create_fsm_context(bot, storage, operator_id: int) -> FSMContext:
@@ -44,20 +44,23 @@ def _create_fsm_context(bot, storage, operator_id: int) -> FSMContext:
     return fsm
 
 
-async def _update_panel(bot, pool, session_id: int, panel: dict, current_state: str, operator_id: int):
+async def _update_panel(bot, services: ServiceContainer, session_id: int, panel: dict, current_state: str, operator_id: int):
     """Обновляет панель сессии"""
     chat_id = panel["chat_id"]
     message_id = panel["message_id"]
     logger.debug(f"Обновление панели: chat_id={chat_id}, message_id={message_id}")
 
+    session_service = services.session_service
+    message_service = services.message_service
+
     # Получаем информацию о сессии
-    info = await reqs.get_session_view(pool, session_id)
+    info = await session_service.get_session_info(session_id)
     if not info:
         logger.warning(f"Сессия {session_id} не найдена для обновления панели оператора {operator_id}")
         return
 
     # Получаем сообщения и рендерим
-    msgs = await reqs.fetch_session_messages(pool, info["tgid"], session_id)
+    msgs = await message_service.get_session_messages(info["tgid"], session_id)
     text, attachments = render_messages.render_session_text(
         info["username"], 
         info["assigned_agent"], 

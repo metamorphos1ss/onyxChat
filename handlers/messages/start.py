@@ -4,15 +4,14 @@ from aiogram.enums import ParseMode
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
 
-from handlers.messages.admin_reply_handlers import admin_notify
 from keyboards import admin_keyboard
-from sql import reqs
+from services import ServiceContainer
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
 
 
-async def welcome(message: Message, state: FSMContext, is_admin: bool, pool, from_callback=False):
+async def welcome(message: Message, state: FSMContext, is_admin: bool, services: ServiceContainer, from_callback: bool = False) -> None:
     tgid = message.from_user.id
     username = message.from_user.username
     logger.info(f"Обработка команды /start: tgid={tgid}, username=@{username}, is_admin={is_admin}, from_callback={from_callback}")
@@ -38,7 +37,13 @@ async def welcome(message: Message, state: FSMContext, is_admin: bool, pool, fro
         logger.info(f"Приветствие админу {tgid} отправлено")
     else:
         logger.info(f"Пользователь {tgid} запустил бота")
-        session_opened = await reqs.find_open_session(pool, tgid)
+        
+        # Используем сервисы вместо прямых вызовов reqs
+        user_service = services.user_service
+        session_service = services.session_service
+        notification_service = services.notification_service
+        
+        session_opened = await user_service.has_open_session(tgid)
         logger.debug(f"Проверка открытой сессии для {tgid}: {session_opened}")
         text = texts.WELCOME_TEXT_USER
         
@@ -46,9 +51,11 @@ async def welcome(message: Message, state: FSMContext, is_admin: bool, pool, fro
             logger.info(f"У клиента {tgid} уже была открыта сессия")
         else:
             logger.info(f"Создание новой сессии для пользователя {tgid}")
-            session_id = await reqs.ensure_open_session(pool, tgid)
+            session_id = await session_service.ensure_open_session(tgid)
             logger.info(f"Создана новая сессия {session_id} для пользователя {tgid}")
-            await admin_notify(message, pool)
+            
+            # Отправляем уведомление админам через сервис
+            await notification_service.notify_new_session(tgid, username, session_id)
             logger.info(f"Уведомление админам о новой сессии {session_id} отправлено")
         
         logger.debug(f"Отправка приветствия пользователю {tgid}")

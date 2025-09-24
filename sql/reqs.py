@@ -1,3 +1,8 @@
+"""
+Устаревшие функции для работы с БД.
+Большинство функций перенесены в сервисы.
+Оставлены только функции, которые еще используются напрямую.
+"""
 from typing import Any, Optional, Sequence
 
 from constants import CLOSED_PER_PAGE, MESSAGE_DIRECTIONS, SESSION_STATUS, SESSION_TYPES
@@ -5,15 +10,6 @@ from sql import texts
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
-
-async def addUser(pool, tgid, username):
-    """Добавляет пользователя в БД с обновлением last_message_at"""
-    logger.debug(f"Добавление пользователя в БД: tgid={tgid}, username=@{username}")
-    async with pool.acquire() as conn:
-        async with conn.cursor() as cursor:
-            await cursor.execute(texts.add_user, (tgid, username))
-            await conn.commit()
-    logger.debug(f"Пользователь {tgid} добавлен в БД")
 
 async def createTables(pool):
     """Создает все необходимые таблицы в БД"""
@@ -35,8 +31,22 @@ async def createTables(pool):
             await conn.commit()
     logger.info("Все таблицы созданы/проверены в БД")
 
+# УСТАРЕВШИЕ ФУНКЦИИ - НЕ ИСПОЛЬЗУЙТЕ В НОВОМ КОДЕ
+# Используйте соответствующие сервисы вместо этих функций
+
+async def addUser(pool, tgid, username):
+    """УСТАРЕЛО: Используйте UserService.add_user()"""
+    logger.warning("Использование устаревшей функции addUser. Используйте UserService.add_user()")
+    logger.debug(f"Добавление пользователя в БД: tgid={tgid}, username=@{username}")
+    async with pool.acquire() as conn:
+        async with conn.cursor() as cursor:
+            await cursor.execute(texts.add_user, (tgid, username))
+            await conn.commit()
+    logger.debug(f"Пользователь {tgid} добавлен в БД")
+
 async def count_sessions(pool, kind: str, agent_id: Optional[int] = None) -> int:
-    """Подсчитывает количество сессий определенного типа"""
+    """УСТАРЕЛО: Используйте SessionService.count_sessions()"""
+    logger.warning("Использование устаревшей функции count_sessions. Используйте SessionService.count_sessions()")
     if kind == SESSION_TYPES["TO_SERVE"]:
         where_sql, params = f"s.status='{SESSION_STATUS['OPEN']}' AND s.assigned_agent IS NULL", ()
     elif kind == SESSION_TYPES["PROCESSING_MINE"]:
@@ -54,7 +64,8 @@ async def count_sessions(pool, kind: str, agent_id: Optional[int] = None) -> int
             return int(row[0]) if row else 0
 
 async def fetch_sessions(pool, kind: str, agent_id: Optional[int] = None) -> Sequence[tuple[Any, ...]]:
-    """Получает список сессий определенного типа с информацией о пользователях"""
+    """УСТАРЕЛО: Используйте SessionService.fetch_sessions()"""
+    logger.warning("Использование устаревшей функции fetch_sessions. Используйте SessionService.fetch_sessions()")
     if kind == SESSION_TYPES["TO_SERVE"]:
         where_sql, params = f"s.status='{SESSION_STATUS['OPEN']}' AND s.assigned_agent IS NULL", ()
     elif kind == SESSION_TYPES["PROCESSING_MINE"]:
@@ -79,7 +90,8 @@ async def fetch_sessions(pool, kind: str, agent_id: Optional[int] = None) -> Seq
             return await cursor.fetchall()
 
 async def count_closed(pool, only_mine: bool, agent_id: int | None) -> int:
-    """Подсчитывает количество закрытых сессий"""
+    """УСТАРЕЛО: Используйте SessionService.count_closed_sessions()"""
+    logger.warning("Использование устаревшей функции count_closed. Используйте SessionService.count_closed_sessions()")
     async with pool.acquire() as conn:
         async with conn.cursor() as cursor:
             if only_mine:
@@ -90,7 +102,8 @@ async def count_closed(pool, only_mine: bool, agent_id: int | None) -> int:
             return int(row[0]) if row else 0
         
 async def fetch_closed(pool, page: int, only_mine: bool, agent_id: int | None):
-    """Получает список закрытых сессий с пагинацией"""
+    """УСТАРЕЛО: Используйте SessionService.fetch_closed_sessions()"""
+    logger.warning("Использование устаревшей функции fetch_closed. Используйте SessionService.fetch_closed_sessions()")
     offset = (page - 1) * CLOSED_PER_PAGE
     async with pool.acquire() as conn:
         async with conn.cursor() as cursor:
@@ -101,7 +114,8 @@ async def fetch_closed(pool, page: int, only_mine: bool, agent_id: int | None):
             return await cursor.fetchall()
 
 async def log_message(pool, tgid, current_session_id, direction, text, file_id):
-    """Логирует сообщение в БД"""
+    """УСТАРЕЛО: Используйте MessageService.log_message()"""
+    logger.warning("Использование устаревшей функции log_message. Используйте MessageService.log_message()")
     logger.debug(f"Логирование сообщения: tgid={tgid}, session_id={current_session_id}, direction={direction}")
     async with pool.acquire() as conn:
         async with conn.cursor() as cursor:
@@ -110,7 +124,8 @@ async def log_message(pool, tgid, current_session_id, direction, text, file_id):
     logger.debug(f"Сообщение залогировано в БД")
 
 async def find_open_session(pool, tgid: int) -> bool:
-    """Проверяет, есть ли у пользователя открытая сессия"""
+    """УСТАРЕЛО: Используйте UserService.has_open_session()"""
+    logger.warning("Использование устаревшей функции find_open_session. Используйте UserService.has_open_session()")
     async with pool.acquire() as conn:
         async with conn.cursor() as cursor:
             await cursor.execute(texts.find_open_session, (tgid,))
@@ -118,7 +133,8 @@ async def find_open_session(pool, tgid: int) -> bool:
             return bool(row)
 
 async def ensure_open_session(pool, tgid) -> int:
-    """Обеспечивает наличие открытой сессии для пользователя"""
+    """УСТАРЕЛО: Используйте SessionService.ensure_open_session()"""
+    logger.warning("Использование устаревшей функции ensure_open_session. Используйте SessionService.ensure_open_session()")
     logger.debug(f"Обеспечение открытой сессии для пользователя {tgid}")
     async with pool.acquire() as conn:
         async with conn.cursor() as cursor:
@@ -138,7 +154,8 @@ async def ensure_open_session(pool, tgid) -> int:
     return session_id
 
 async def close_session(pool, session_id, assigned_agent) -> bool:
-    """Закрывает сессию агентом"""
+    """УСТАРЕЛО: Используйте SessionService.close_session()"""
+    logger.warning("Использование устаревшей функции close_session. Используйте SessionService.close_session()")
     logger.info(f"Закрытие сессии {session_id} агентом {assigned_agent}")
     async with pool.acquire() as conn:
         async with conn.cursor() as cursor:
@@ -148,7 +165,8 @@ async def close_session(pool, session_id, assigned_agent) -> bool:
             return True
 
 async def get_session_id(pool, tgid) -> Optional[int]:
-    """Получает ID открытой сессии пользователя"""
+    """УСТАРЕЛО: Используйте UserService.get_user_session_id()"""
+    logger.warning("Использование устаревшей функции get_session_id. Используйте UserService.get_user_session_id()")
     async with pool.acquire() as conn:
         async with conn.cursor() as cursor:
             await cursor.execute(texts.find_open_session, (tgid,))
@@ -157,7 +175,8 @@ async def get_session_id(pool, tgid) -> Optional[int]:
             return int(row[0]) if row and row[0] is not None else None
         
 async def get_session_view(pool, session_id: int) -> Optional[dict]:
-    """Получает информацию о сессии"""
+    """УСТАРЕЛО: Используйте SessionService.get_session_info()"""
+    logger.warning("Использование устаревшей функции get_session_view. Используйте SessionService.get_session_info()")
     async with pool.acquire() as conn:
         async with conn.cursor() as cursor:
             await cursor.execute(texts.get_session_view, (session_id,))
@@ -174,7 +193,8 @@ async def get_session_view(pool, session_id: int) -> Optional[dict]:
     }
 
 async def fetch_session_messages(pool, tgid, session_id: int):
-    """Получает сообщения сессии"""
+    """УСТАРЕЛО: Используйте MessageService.get_session_messages()"""
+    logger.warning("Использование устаревшей функции fetch_session_messages. Используйте MessageService.get_session_messages()")
     async with pool.acquire() as conn:
         async with conn.cursor() as cursor:
             await cursor.execute(texts.fetch_session_messages, (tgid, session_id))
@@ -182,7 +202,8 @@ async def fetch_session_messages(pool, tgid, session_id: int):
     return rows
 
 async def get_message_file(pool, msg_id: int) -> tuple[str | None, int | None]:
-    """Получает file_id и session_id сообщения"""
+    """УСТАРЕЛО: Используйте MessageService.get_message_file()"""
+    logger.warning("Использование устаревшей функции get_message_file. Используйте MessageService.get_message_file()")
     async with pool.acquire() as conn:
         async with conn.cursor() as cursor:
             await cursor.execute(texts.get_message_file, (msg_id,))
@@ -190,7 +211,8 @@ async def get_message_file(pool, msg_id: int) -> tuple[str | None, int | None]:
             return (row[0], row[1]) if row else (None, None)
 
 async def assign_session(pool, session_id: int, operator_id: int) -> bool:
-    """Назначает сессию оператору"""
+    """УСТАРЕЛО: Используйте SessionService.assign_session()"""
+    logger.warning("Использование устаревшей функции assign_session. Используйте SessionService.assign_session()")
     logger.info(f"Назначение сессии {session_id} оператору {operator_id}")
     async with pool.acquire() as conn:
         async with conn.cursor() as cursor:

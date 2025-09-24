@@ -9,13 +9,13 @@ import texts
 from config import get_admin_ids
 from constants import MESSAGE_DIRECTIONS
 from keyboards.messages_keyboard import session_view
-from sql import reqs
+from services import ServiceContainer
 from utils import render_messages
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
 
-async def admin_reply(message: Message, state: FSMContext, pool):
+async def admin_reply(message: Message, state: FSMContext, services: ServiceContainer) -> None:
     """Обрабатывает ответ админа пользователю"""
     admin_id = message.from_user.id
     logger.info(f"Обработка ответа админа {admin_id}")
@@ -38,8 +38,12 @@ async def admin_reply(message: Message, state: FSMContext, pool):
             logger.warning(f"Не удалось удалить сообщение /start: {e}")
         return
     
+    # Получаем сервисы
+    session_service = services.session_service
+    message_service = services.message_service
+    
     logger.info(f"Получение информации о сессии {session_id}")
-    view = await reqs.get_session_view(pool, session_id)
+    view = await session_service.get_session_info(session_id)
     if not view or not view["tgid"]:
         logger.error(f"Сессия {session_id} не найдена или не имеет tgid")
         await message.answer(texts.CLIENT_NOT_FOUND)
@@ -60,20 +64,18 @@ async def admin_reply(message: Message, state: FSMContext, pool):
         logger.error(f"Ошибка отправки сообщения пользователю {user_id}: {e}")
         return await message.answer(texts.FAILED_TO_SEND_MESSAGE.format(exception=e))
     
-  # Логируем сообщение в БД
+    # Логируем сообщение в БД через сервис
     logger.info(f"Логирование сообщения в БД: user_id={user_id}, session_id={session_id}")
-    await reqs.log_message(
-        pool,
+    await message_service.log_agent_message(
         tgid=user_id,
-        current_session_id=session_id,
-        direction=MESSAGE_DIRECTIONS["FROM_AGENT"],
+        session_id=session_id,
         text=sent_text,
         file_id=file_id
     )
     logger.info(f"Сообщение залогировано в БД")
 
     # Обновляем панель если есть
-    await _update_session_panel(message, state, pool, session_id, user_id, view)
+    await _update_session_panel(message, state, services, session_id, user_id, view)
     
     # Удаляем сообщение админа
     logger.debug(f"Удаление сообщения админа {admin_id}")
@@ -98,7 +100,7 @@ def _extract_file_id(message: Message) -> str | None:
     return None
 
 
-async def _update_session_panel(message: Message, state: FSMContext, pool, session_id: int, user_id: int, view: dict):
+async def _update_session_panel(message: Message, state: FSMContext, services: ServiceContainer, session_id: int, user_id: int, view: dict) -> None:
     """Обновляет панель сессии"""
     data = await state.get_data()
     panel = data.get("panel_msg")
@@ -107,9 +109,13 @@ async def _update_session_panel(message: Message, state: FSMContext, pool, sessi
         logger.debug(f"Панель для сессии {session_id} не найдена")
         return
     
+    # Получаем сервисы
+    session_service = services.session_service
+    message_service = services.message_service
+    
     logger.info(f"Обновление панели сессии {session_id}")
-    info = await reqs.get_session_view(pool, int(session_id))
-    msgs = await reqs.fetch_session_messages(pool, user_id, int(session_id))
+    info = await session_service.get_session_info(int(session_id))
+    msgs = await message_service.get_session_messages(user_id, int(session_id))
     text, attachments = render_messages.render_session_text(
         info["username"], info["assigned_agent"], msgs
     )
@@ -131,57 +137,3 @@ async def _update_session_panel(message: Message, state: FSMContext, pool, sessi
         logger.info(f"Панель сессии {session_id} обновлена")
     except Exception as e:
         logger.warning(f"Не удалось обновить панель сессии {session_id}: {e}")
-
-async def admin_notify(message: Message, pool):
-    """Отправляет уведомление админам о новой сессии"""
-    bot = message.bot
-    tgid = message.from_user.id
-    username = message.from_user.username
-    logger.info(f"Отправка уведомления админам о новой сессии для пользователя {tgid}")
-    
-    session_id = await reqs.get_session_id(pool, tgid)
-    if not session_id:
-        logger.warning(f"admin_notify: нет открытой сессии для tgid={tgid}")
-        return
-    
-    # Формируем текст уведомления
-    uline = f"@{username}" if username else "(без username)"
-    text = f"Новая сессия\nКлиент: #{tgid} {uline}"
-    logger.debug(f"Текст уведомления: {text}")
-
-    # Создаем клавиатуру
-    kb = InlineKeyboardBuilder()
-    kb.row(
-        InlineKeyboardButton(text="Открыть", callback_data=f"session:{session_id}"),
-        InlineKeyboardButton(text="Взять чат", callback_data=f"take:{session_id}")
-    )
-    logger.debug(f"Создана клавиатура для сессии {session_id}")
-
-    # Получаем список админов
-    admins = get_admin_ids()
-    logger.info(f"Отправка уведомления {len(admins)} админам: {admins}")
-
-    # Отправляем уведомления параллельно
-    await _send_notifications_to_admins(bot, admins, text, kb.as_markup())
-    
-    logger.info(f"Уведомления о сессии {session_id} отправлены всем админам")
-
-
-async def _send_notifications_to_admins(bot, admins: set[int], text: str, keyboard):
-    """Отправляет уведомления всем админам"""
-    tasks = []
-    for admin_id in admins:
-        task = _send_single_notification(bot, admin_id, text, keyboard)
-        tasks.append(task)
-    
-    # Выполняем все отправки параллельно
-    await asyncio.gather(*tasks, return_exceptions=True)
-
-
-async def _send_single_notification(bot, admin_id: int, text: str, keyboard):
-    """Отправляет уведомление одному админу"""
-    try:
-        await bot.send_message(admin_id, text, reply_markup=keyboard)
-        logger.info(f"Уведомление отправлено админу {admin_id}")
-    except Exception as e:
-        logger.exception(f"admin_notify: не удалось отправить админу {admin_id}: {e}")
