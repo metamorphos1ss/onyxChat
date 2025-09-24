@@ -127,7 +127,7 @@ async def close_session(pool, session_id, assigned_agent) -> int:
     logger.info(f"Закрытие сессии {session_id} агентом {assigned_agent}")
     async with pool.acquire() as conn:
         async with conn.cursor() as cursor:
-            await cursor.execute(texts.close_session, (session_id, assigned_agent))
+            await cursor.execute(texts.close_session, (session_id))
             await conn.commit()
             logger.info(f"Сессия {session_id} закрыта агентом {assigned_agent}")
             return True
