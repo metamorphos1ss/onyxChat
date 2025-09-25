@@ -4,7 +4,7 @@
 from typing import Optional, Sequence, Any
 from datetime import datetime
 from .base_service import BaseService
-from sql import texts
+from sql import message_sql
 from constants import MESSAGE_DIRECTIONS
 
 
@@ -27,7 +27,7 @@ class MessageService(BaseService):
         try:
             async with self.pool.acquire() as conn:
                 async with conn.cursor() as cursor:
-                    await cursor.execute(texts.log_message, (tgid, session_id, direction, text, file_id))
+                    await cursor.execute(message_sql.log_message, (tgid, session_id, direction, text, file_id))
                     await conn.commit()
             self.logger.debug(f"Сообщение залогировано в БД")
         except Exception as e:
@@ -48,7 +48,7 @@ class MessageService(BaseService):
         try:
             async with self.pool.acquire() as conn:
                 async with conn.cursor() as cursor:
-                    await cursor.execute(texts.fetch_session_messages, (tgid, session_id))
+                    await cursor.execute(message_sql.fetch_session_messages, (tgid, session_id))
                     return await cursor.fetchall()
         except Exception as e:
             self.logger.error(f"Ошибка получения сообщений сессии {session_id}: {e}")
@@ -67,7 +67,7 @@ class MessageService(BaseService):
         try:
             async with self.pool.acquire() as conn:
                 async with conn.cursor() as cursor:
-                    await cursor.execute(texts.get_message_file, (message_id,))
+                    await cursor.execute(message_sql.get_message_file, (message_id,))
                     row = await cursor.fetchone()
                     return (row[0], row[1]) if row else (None, None)
         except Exception as e:

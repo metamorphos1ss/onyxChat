@@ -3,7 +3,7 @@
 """
 from typing import Optional
 from .base_service import BaseService
-from sql import texts
+from sql import user_sql, session_sql
 
 
 class UserService(BaseService):
@@ -22,7 +22,7 @@ class UserService(BaseService):
         try:
             async with self.pool.acquire() as conn:
                 async with conn.cursor() as cursor:
-                    await cursor.execute(texts.add_user, (tgid, username))
+                    await cursor.execute(user_sql.add_user, (tgid, username))
                     await conn.commit()
             self.logger.debug(f"Пользователь {tgid} добавлен в БД")
         except Exception as e:
@@ -42,7 +42,7 @@ class UserService(BaseService):
         try:
             async with self.pool.acquire() as conn:
                 async with conn.cursor() as cursor:
-                    await cursor.execute(texts.find_open_session, (tgid,))
+                    await cursor.execute(session_sql.find_open_session, (tgid,))
                     row = await cursor.fetchone()
                     return int(row[0]) if row and row[0] is not None else None
         except Exception as e:
@@ -62,7 +62,7 @@ class UserService(BaseService):
         try:
             async with self.pool.acquire() as conn:
                 async with conn.cursor() as cursor:
-                    await cursor.execute(texts.find_open_session, (tgid,))
+                    await cursor.execute(session_sql.find_open_session, (tgid,))
                     row = await cursor.fetchone()
                     return bool(row)
         except Exception as e:
@@ -82,7 +82,7 @@ class UserService(BaseService):
         try:
             async with self.pool.acquire() as conn:
                 async with conn.cursor() as cursor:
-                    await cursor.execute(texts.bind_current_session_to_user, (session_id, tgid))
+                    await cursor.execute(user_sql.bind_current_session_to_user, (session_id, tgid))
                     await conn.commit()
             self.logger.debug(f"Сессия {session_id} привязана к пользователю {tgid}")
         except Exception as e:

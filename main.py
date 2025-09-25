@@ -48,7 +48,7 @@ async def bot_init():
     return pool
 
 
-async def _setup_middleware(pool, services_container):
+async def _setup_middleware(services_container):
     """Настраивает middleware для бота"""
     # Middleware для передачи сервисов
     dp.message.middleware(services.ServicesMiddleware())

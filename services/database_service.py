@@ -2,7 +2,7 @@
 Сервис для работы с базой данных
 """
 from .base_service import BaseService
-from sql import texts
+from sql import database_sql
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -22,10 +22,10 @@ class DatabaseService(BaseService):
                 async with conn.cursor() as cursor:
                     # Выполняем все запросы в одной транзакции
                     tables = [
-                        ("users", texts.create_users_table),
-                        ("orders", texts.create_orders_table),
-                        ("messages", texts.create_messages_table),
-                        ("sessions", texts.create_sessions_table)
+                        ("users", database_sql.create_users_table),
+                        ("statistics", database_sql.create_statistics_table),
+                        ("messages", database_sql.create_messages_table),
+                        ("sessions", database_sql.create_sessions_table)
                     ]
                     
                     for table_name, create_sql in tables:

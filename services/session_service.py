@@ -3,7 +3,7 @@
 """
 from typing import Optional, Sequence, Any
 from .base_service import BaseService
-from sql import texts
+from sql import session_sql, user_sql
 from constants import SESSION_TYPES, SESSION_STATUS, CLOSED_PER_PAGE
 
 
@@ -25,7 +25,7 @@ class SessionService(BaseService):
         try:
             async with self.pool.acquire() as conn:
                 async with conn.cursor() as cursor:
-                    await cursor.execute(texts.openCreate_session, (tgid,))
+                    await cursor.execute(session_sql.openCreate_session, (tgid,))
                     session_id = int(cursor.lastrowid)
                     await conn.commit()
             self.logger.info(f"Создана новая сессия {session_id} для пользователя {tgid}")
@@ -50,7 +50,7 @@ class SessionService(BaseService):
             async with self.pool.acquire() as conn:
                 async with conn.cursor() as cursor:
                     # Проверяем существующую сессию
-                    await cursor.execute(texts.find_open_session, (tgid,))
+                    await cursor.execute(session_sql.find_open_session, (tgid,))
                     row = await cursor.fetchone()
                     
                     if row and row[0]:
@@ -58,12 +58,12 @@ class SessionService(BaseService):
                         self.logger.debug(f"Найдена существующая сессия {session_id} для пользователя {tgid}")
                     else:
                         # Создаем новую сессию
-                        await cursor.execute(texts.openCreate_session, (tgid,))
+                        await cursor.execute(session_sql.openCreate_session, (tgid,))
                         session_id = int(cursor.lastrowid)
                         self.logger.info(f"Создана новая сессия {session_id} для пользователя {tgid}")
                     
                     # Привязываем сессию к пользователю
-                    await cursor.execute(texts.bind_current_session_to_user, (session_id, tgid))
+                    await cursor.execute(user_sql.bind_current_session_to_user, (session_id, tgid))
                     await conn.commit()
             
             self.logger.debug(f"Сессия {session_id} привязана к пользователю {tgid}")
@@ -85,7 +85,7 @@ class SessionService(BaseService):
         try:
             async with self.pool.acquire() as conn:
                 async with conn.cursor() as cursor:
-                    await cursor.execute(texts.get_session_view, (session_id,))
+                    await cursor.execute(session_sql.get_session_view, (session_id,))
                     row = await cursor.fetchone()
             
             if not row:
@@ -116,7 +116,7 @@ class SessionService(BaseService):
         
         try:
             changed = await self._execute_update(
-                texts.assign_session, 
+                session_sql.assign_session, 
                 (agent_id, session_id, agent_id)
             )
             success = changed == 1
@@ -141,7 +141,7 @@ class SessionService(BaseService):
         
         try:
             changed = await self._execute_update(
-                texts.close_session, 
+                session_sql.close_session, 
                 (session_id, agent_id)
             )
             success = changed == 1
@@ -256,9 +256,9 @@ class SessionService(BaseService):
         """
         try:
             if only_mine:
-                rows = await self._execute_query(texts.count_closed_mine, (agent_id,))
+                rows = await self._execute_query(session_sql.count_closed_mine, (agent_id,))
             else:
-                rows = await self._execute_query(texts.count_closed_all)
+                rows = await self._execute_query(session_sql.count_closed_all)
             return int(rows[0][0]) if rows else 0
         except Exception as e:
             self.logger.error(f"Ошибка подсчета закрытых сессий: {e}")
@@ -280,9 +280,9 @@ class SessionService(BaseService):
         
         try:
             if only_mine:
-                return await self._execute_query(texts.fetch_closed_mine, (agent_id, CLOSED_PER_PAGE, offset))
+                return await self._execute_query(session_sql.fetch_closed_mine, (agent_id, CLOSED_PER_PAGE, offset))
             else:
-                return await self._execute_query(texts.fetch_closed_all, (CLOSED_PER_PAGE, offset))
+                return await self._execute_query(session_sql.fetch_closed_all, (CLOSED_PER_PAGE, offset))
         except Exception as e:
             self.logger.error(f"Ошибка получения закрытых сессий: {e}")
             raise
