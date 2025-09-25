@@ -98,7 +98,7 @@ close_session = """
 UPDATE sessions
 SET status = 'closed',
     closed_at = CURRENT_TIMESTAMP
-WHERE id = %s AND status = 'open' AND assigned_agent = %s
+WHERE id = %s AND status = 'open'
 """
 
 assign_session = """
